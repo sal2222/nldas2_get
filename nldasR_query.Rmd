@@ -1,0 +1,228 @@
+---
+title: "nldasR_query"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(sf)
+library(remotes)
+library(nldastools)
+#remotes::install_github("lawinslow/nldasR", force = TRUE)
+
+```
+
+## NLDAS 2 Data rod query
+
+https://rdrr.io/github/lawinslow/nldasR/man/nldas2_primary_forcing_rods.html 
+Interfaces with NASA Data Rods (Time series) services managed by Goddard Earth Sciences Data and Information Services Center (GES DISC). More info about the interface available here.
+
+Provides: datetime APCPsfc DLWRFsfc DSWRFsfc PEVAPsfc   SPFH2m  TMP2m UGRD10m VGRD10m
+Surface Pressure band not available through this data server :(
+
+
+```{r}
+
+centroids <-
+  read_rds("output/centroids.Rmd")
+
+centroids
+
+```
+
+
+## Test interface
+Source code: https://rdrr.io/github/lawinslow/nldasR/src/R/nldas2_primary_forcing_rods.R
+
+```{r}
+#short
+nldas2_primary_forcing_rods(-84.80115, 32.39959, start = as.POSIXct("1990-07-14", tz =
+  "UTC"), stop = as.POSIXct("1990-07-15", tz = "UTC"))
+
+#long
+nldas2_primary_forcing_rods(-84.80115, 32.39959, start = start_date, stop = stop_date)
+
+# getting error for Pensacola: 
+nldas2_primary_forcing_rods(-87.30628, 30.35261, start = start_date, stop = stop_date)
+
+centroids %>% as.data.frame()
+
+nldas2_primary_forcing_rods(-117.19769, 32.74017, start = as.POSIXct("1990-07-14", tz =
+  "UTC"), stop = as.POSIXct("1990-07-15", tz = "UTC"))
+```
+
+
+## Get NLDAS 2 primary forcing rods
+
+```{r}
+
+start_date <- as.POSIXct("1989-12-31", tz =  "UTC")
+stop_date <-  as.POSIXct("2022-01-01", tz = "UTC")
+
+
+# Times out with 24 rows "Request failed [404]"; break into smaller slices
+# 3 coordinate sets return error: Pensacola, San Diego, Parris Island -- add 0.05 degree to lat and lon
+
+
+nldas_8band_a <-
+  centroids %>%
+      slice(1:2) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(nldas_8band_a, "output/nldas_8band_a")
+
+nldas_8band_b1 <-
+  centroids %>%
+      slice(3) %>%  # Pensacola
+      mutate(nldas = map2(.x = lon + 0.05, .y = lat + 0.05, # adjustment needed to return data
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+#write_rds(nldas_8band_b1, "output/nldas_8band_b1")
+
+nldas_8band_b2 <-
+  centroids %>%
+      slice(4) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(nldas_8band_b2, "output/nldas_8band_b2")
+
+nldas_8band_b3 <-
+  centroids %>%
+      slice(5) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(nldas_8band_b3, "output/nldas_8band_b3")
+
+nldas_8band_b4 <-
+  centroids %>%
+      slice(6) %>% # San Diego
+      mutate(nldas = map2(.x = lon + 0.05, .y = lat + 0.05, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(nldas_8band_b4, "output/nldas_8band_b4")
+
+nldas_8band_c <-
+  centroids %>%
+      slice(7:9) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+# write_rds(nldas_8band_c, "output/nldas_8band_c")
+
+nldas_8band_d <-
+  centroids %>%
+      slice(10:11) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+# write_rds(nldas_8band_d, "output/nldas_8band_d")
+
+nldas_8band_12 <-
+  centroids %>%
+      slice(12) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_12, "output/nldas_8band_12")
+
+nldas_8band_13 <-
+  centroids %>%
+      slice(13) %>% # Parris Island
+      mutate(nldas = map2(.x = lon + 0.05, .y = lat + 0.05, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_13, "output/nldas_8band_13")
+
+nldas_8band_14_15 <-
+  centroids %>%
+      slice(14:15) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_14_15, "output/nldas_8band_14_15")
+
+nldas_8band_16_17 <-
+  centroids %>%
+      slice(16:17) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_16_17, "output/nldas_8band_16_17")
+
+nldas_8band_18_19 <-
+  centroids %>%
+      slice(18:19) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_18_19, "output/nldas_8band_18_19")
+
+nldas_8band_20_22 <-
+  centroids %>%
+      slice(20:22) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+# write_rds(nldas_8band_20_22, "output/nldas_8band_20_22") 
+
+nldas_8band_23_24 <-
+  centroids %>%
+      slice(23:24) %>% 
+      mutate(nldas = map2(.x = lon, .y = lat, 
+                          ~nldas2_primary_forcing_rods(.x, .y, start = start_date, stop = stop_date)))
+
+# write_rds(nldas_8band_23_24, "output/nldas_8band_23_24") 
+
+```
+
+## Compile into single dataframe
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+get_primary_forcing_local_multitool(lons, lats, ids)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
