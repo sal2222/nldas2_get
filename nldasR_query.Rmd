@@ -15,8 +15,7 @@ library(lubridate)
 library(janitor)
 library(sf)
 library(remotes)
-library(nldastools)
-#remotes::install_github("lawinslow/nldasR", force = TRUE)
+library(nldastools) #remotes::install_github("lawinslow/nldasR", force = TRUE)
 
 ```
 
@@ -183,6 +182,13 @@ nldas_8band_23_24 <-
 
 ```{r}
 
+
+nldas_8 <-
+  list.files(path = "./output", pattern = "nldas_8band_", full.names = TRUE) %>%
+  map_dfr(read_rds) %>% 
+  bind_rows()
+
+# write_rds(nldas_8, "output/nldas_8") 
 
 ```
 

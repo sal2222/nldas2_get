@@ -1,0 +1,150 @@
+---
+title: "compare_nldas"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+
+```
+
+Compare `nldas_8` temperatures (data rod) with prior dataset
+
+```{r}
+nldas_8 <-
+  read_rds("output/nldas_8.Rmd")
+
+daily_indices_old <-
+  read_rds("C:/Users/slewa/OneDrive - cumc.columbia.edu/daily_hsi/data/daily_indices.rds") %>% 
+  dplyr::select(c(installation, date, tmp_f_mean, tmp_f_max))
+
+```
+
+Create daily indices (mean, max daily temp) from `nldas_8`
+```{r}
+
+nldas8_daily <-
+  nldas_8 %>% 
+    unnest() %>% 
+    dplyr::select(site_name, datetime, TMP2m) %>% 
+    group_by(site_name, lubridate::date(datetime)) %>% 
+    summarise(tmp_mean = mean(TMP2m),
+              tmp_max = max(TMP2m)) %>% 
+    mutate(tmp_mean = (tmp_mean -273.15) * 9/5 + 32,
+           tmp_max = (tmp_max -273.15) * 9/5 + 32) %>% 
+  rename(date = `lubridate::date(datetime)`)
+
+```
+
+Prepare old df to join
+```{r}
+
+
+daily_indices_old <-
+  daily_indices_old %>% 
+    mutate(installation = recode(installation,
+                                 eglin_afb = "Eglin AFB",
+                                  fort_benning_ga = "Fort Benning",
+                                  fort_bliss = "Fort Bliss",
+                                  fort_bragg = "Fort Bragg",
+                                  fort_campbell = "Fort Campbell",
+                                  fort_gordon = "Fort Gordon",
+                                  fort_hood = "Fort Hood",
+                                  fort_jackson = "Fort Jackson",
+                                  fort_knox = "Fort Knox",
+                                  fort_leonard_wood = "Fort Leonard Wood",
+                                  fort_polk = "Fort Polk",
+                                  fort_riley = "Fort Riley",
+                                  fort_sam_houston = "Joint Base San Antonio",
+                                  fort_sill = "Fort Sill",
+                                  fort_stewart = "Fort Stewart",
+                                  mcb_camp_lejeune = "MCB Camp Lejeune",
+                                  mcb_camp_pendleton = "MCB Camp Pendleton",
+                                  mcb_quantico = "MCB Quantico",
+                                  mcrd_beaufort_parris_island = "MCRD Parris Island",
+                                  mcrd_san_diego = "MCRD San Diego",
+                                  ntc_and_fort_irwin = "Fort Irwin",
+                                  pensacola = "NAS Pensacola",
+                                  portsmouth = "NMC Portsmouth",
+                                  twentynine_palms_main_base = "Twentynine Palms")) %>% 
+    rename(tmp_mean_old = tmp_f_mean,
+           tmp_max_old = tmp_f_max)
+
+
+```
+
+# Join "old" to "new" (data rods)
+
+```{r}
+joined_daily_temp <-
+  nldas8_daily %>% 
+    left_join(daily_indices_old, by = c("site_name" = "installation", "date" = "date"))
+
+
+```
+
+# Inspect differences
+Note: times averaged in new set from UTC, not local
+
+
+Plots
+```{r}
+# 1996 - 2019
+joined_daily_temp %>% 
+  filter(lubridate::year(date) > 1995 & lubridate::year(date) < 2020) %>% 
+  ggplot(aes(x = date)) +
+    geom_line(aes(y = tmp_mean), color = "blue") +
+    geom_line(aes(y = tmp_mean_old), color = "red") +
+    facet_wrap(~ site_name)
+
+# July 2000
+
+joined_daily_temp %>% 
+  filter(lubridate::year(date) == 2000,
+         lubridate::month(date) == 7) %>% 
+  ggplot(aes(x = date)) +
+    geom_line(aes(y = tmp_mean), color = "blue") +
+    geom_line(aes(y = tmp_mean_old), color = "red") +
+    facet_wrap(~ site_name)
+
+#ggsave("output/compare_daily_mean_tmp_jul2000.png", width = 10, height = 10)  
+
+
+joined_daily_temp %>% 
+  filter(lubridate::year(date) == 2000,
+         lubridate::month(date) == 7) %>% 
+  ggplot(aes(x = date)) +
+    geom_line(aes(y = tmp_max), color = "blue") +
+    geom_line(aes(y = tmp_max_old), color = "red") +
+    facet_wrap(~ site_name)
+#ggsave("output/compare_daily_max_tmp_jul2000.png", width = 10, height = 10)  
+```
+
+Good: eglin, benning, knox, jbsa, lejeune, pendleton, quantico, parris island, san diego, pensacola, portsmouth, 29 palms (12)
+Off: bliss, bragg, campbell, gordon, hood, irwin, jackson, leonard wood, polk, riley, sill, stewart
+
+
+
+# Paired t-test
+```{r}
+joined_daily_temp %>%
+  dplyr::select(-tmp_max, -tmp_max_old) %>% 
+  gather(key = variable, value = value, -c(site_name, date)) %>% 
+  group_by(site_name, variable) %>%
+  summarise(value = list(value)) %>%
+  spread(variable, value) %>%
+  group_by(site_name) %>% 
+      mutate(p_value = t.test(unlist(tmp_mean), unlist(tmp_mean_old), paired = TRUE)$p.value,
+         t_value = t.test(unlist(tmp_mean), unlist(tmp_mean_old), paired = TRUE)$statistic) 
+
+```
+
+
