@@ -147,4 +147,22 @@ joined_daily_temp %>%
 
 ```
 
+# Mean Annual temps
+
+```{r}
+
+joined_daily_temp %>%
+  group_by(site_name, lubridate::year(date)) %>% 
+  summarise(mat = mean (tmp_mean),
+            mat_old = mean(tmp_mean_old)
+            )
+  
+
+joined_daily_temp %>%
+  group_by(site_name) %>% 
+  summarise(mat = mean(tmp_mean),
+            mat_old = mean(tmp_mean_old)
+            )
+
+```
 

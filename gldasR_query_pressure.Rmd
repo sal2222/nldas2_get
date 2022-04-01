@@ -1,0 +1,252 @@
+---
+title: "gldasR_query_pressure"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(sf)
+library(remotes)
+library(nldastools) #remotes::install_github("lawinslow/nldasR", force = TRUE)
+library(httr)
+
+```
+
+## GLDAS 3 hour Data rod query
+
+Global Land Data Assimilation System
+GLDAS Noah Land Surface Model L4 3 hourly 0.25 x 0.25 degree V2.1 (GLDAS_NOAH025_3H)
+https://disc.gsfc.nasa.gov/datasets/GLDAS_NOAH025_3H_2.1/summary  
+
+
+
+https://rdrr.io/github/lawinslow/nldasR/man/nldas2_primary_forcing_rods.html 
+Interfaces with NASA Data Rods (Time series) services managed by Goddard Earth Sciences Data and Information Services Center (GES DISC). More info about the interface available here.
+
+
+```{r}
+
+centroids <-
+  read_rds("output/centroids.Rmd")
+
+centroids %>% as.data.frame()
+
+```
+
+  https://hydro1.gesdisc.eosdis.nasa.gov/daac-bin/access/timeseries.cgi?variable=GLDAS2:GLDAS_NOAH025_3H_v2.1:Psurf_f_inst&startDate=2002-07-01T00&endDate=2002-07-03T00&location=GEOM:POINT(-84.8012, 32.3996)&type=asc2
+
+## Get GLDAS function:
+Adapted from: https://rdrr.io/github/lawinslow/nldasR/src/R/nldas2_primary_forcing_rods.R
+
+```{r}
+
+#' @title Get GLDAS primary forcing data
+#'
+#' @param lon Longitude of data location request
+#' @param lat Latitude of data location request
+#' @param start Start date as POSIXct
+#' @param stop End date as POSIXct
+#'
+#' @description
+#' Interfaces with NASA Data Rods (Time series) services managed by Goddard Earth Sciences Data and
+#' Information Services Center (GES DISC). More info about the interface available
+#' \href{https://disc.sci.gsfc.nasa.gov/hydrology/data-rods-time-series-data}{here}.
+#'
+#' @import httr
+#' @export
+gldas2_1_rods <- function(lon, lat, start=as.POSIXct('2000-01-01', tz='UTC'), stop=as.POSIXct('2017-01-01', tz='UTC')){
+
+  if(length(lon) != 1 || length(lat) != 1){
+    stop('Lat and Lon must both be length of 1')
+  }
+
+  if(start < as.POSIXct('1999-12-31', tz='UTC') || start > as.POSIXct(Sys.Date())){
+    stop('Start date must be between 1999-12-31 and now')
+  }
+
+  if(stop < as.POSIXct('1999-12-31', tz='UTC') || stop > as.POSIXct(Sys.Date())){
+    stop('Stop date must be between 1999-12-31 and now')
+  }
+
+  pf_vars = "Psurf_f_inst"
+
+
+  url_pattern = paste0('https://hydro1.gesdisc.eosdis.nasa.gov/daac-bin/access/timeseries.cgi?',
+                       'variable=GLDAS2:GLDAS_NOAH025_3H_v2.1:%s&location=GEOM:POINT(%g,%%20%g)&startDate=%s&endDate=%s&type=asc2')
+
+
+  dl_parse = function(var){
+    durl = sprintf(url_pattern, var, lon, lat, format(start, '%Y-%m-%dT%H'), format(stop, '%Y-%m-%dT%H'))
+    r = RETRY('GET', durl)
+    d = read.table(text=content(r, 'text'), skip=12, header=TRUE, fill=TRUE)
+    names(d) = c('datetime', var)
+    d$datetime = as.POSIXct(strptime(paste0(d$datetime, 'T', d$hour), '%Y-%m-%dT%H', tz='UTC'))
+    d$hour = NULL
+    return(d)
+  }
+
+  d_list = lapply(pf_vars, dl_parse)
+
+  pf_data = Reduce(function(...){merge(..., by='datetime')}, d_list)
+  return(pf_data)
+}
+```
+
+
+
+
+## Test interface
+Source code: https://rdrr.io/github/lawinslow/nldasR/src/R/nldas2_primary_forcing_rods.R
+
+
+
+https://hydro1.gesdisc.eosdis.nasa.gov/daac-bin/access/timeseries.cgi?variable=GLDAS2:GLDAS_NOAH025_3H_v2.1:Psurf_f_inst&startDate=2002-07-01T00&endDate=2002-07-03T00&location=GEOM:POINT(-84.8012, 32.3996)&type=asc2
+
+
+
+```{r}
+#short
+gldas2_1_rods(-84.80115, 32.39959, start = as.POSIXct("2002-07-01", tz =
+  "UTC"), stop = as.POSIXct("2002-07-03", tz = "UTC"))
+
+# start date test
+
+gldas2_1_rods(-84.80115, 32.39959, start = as.POSIXct("2000-01-01", tz =
+  "UTC"), stop = as.POSIXct("2000-01-03", tz = "UTC"))
+
+# end date test
+gldas2_1_rods(-84.80115, 32.39959, start = as.POSIXct("2021-12-28", tz =
+  "UTC"), stop = as.POSIXct("2021-12-31", tz = "UTC"))
+
+
+centroids %>% as.data.frame()
+
+```
+
+
+## Get GLDAS 2.1 surface pressure rods (2000-2022)
+
+```{r}
+
+start_date <- as.POSIXct("2000-01-01", tz =  "UTC")
+stop_date <-  as.POSIXct("2022-01-01", tz = "UTC")
+
+
+
+gldas_2_1_press_00_22 <-
+  centroids %>%
+      mutate(gldas = map2(.x = lon, .y = lat, 
+                          ~gldas2_1_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(gldas_2_1_press_00_22, "output/gldas_2_1_press_00_22")
+
+gldas_2_1_press_00_22
+
+```
+
+
+## Function to get GLDAS2.0 (1948-2014)
+
+https://hydro1.gesdisc.eosdis.nasa.gov/daac-bin/access/timeseries.cgi?variable=GLDAS2:GLDAS_NOAH025_3H_v2.0:Psurf_f_inst&startDate=2002-07-01T00&endDate=2002-07-03T00&location=GEOM:POINT(-84.8012, 32.3996)&type=asc2
+
+
+```{r}
+
+#' @title Get GLDAS primary forcing data
+#'
+#' @param lon Longitude of data location request
+#' @param lat Latitude of data location request
+#' @param start Start date as POSIXct
+#' @param stop End date as POSIXct
+#'
+#' @description
+#' Interfaces with NASA Data Rods (Time series) services managed by Goddard Earth Sciences Data and
+#' Information Services Center (GES DISC). More info about the interface available
+#' \href{https://disc.sci.gsfc.nasa.gov/hydrology/data-rods-time-series-data}{here}.
+#'
+#' @import httr
+#' @export
+gldas2_0_rods <- function(lon, lat, start=as.POSIXct('2000-01-01', tz='UTC'), stop=as.POSIXct('2017-01-01', tz='UTC')){
+
+  if(length(lon) != 1 || length(lat) != 1){
+    stop('Lat and Lon must both be length of 1')
+  }
+
+  if(start < as.POSIXct('1948-12-31', tz='UTC') || start > as.POSIXct(Sys.Date())){
+    stop('Start date must be between 1948-12-31 and now')
+  }
+
+  if(stop < as.POSIXct('1948-12-31', tz='UTC') || stop > as.POSIXct(Sys.Date())){
+    stop('Stop date must be between 1948-12-31 and now')
+  }
+
+  pf_vars = "Psurf_f_inst"
+
+
+  url_pattern = paste0('https://hydro1.gesdisc.eosdis.nasa.gov/daac-bin/access/timeseries.cgi?',
+                       'variable=GLDAS2:GLDAS_NOAH025_3H_v2.0:%s&location=GEOM:POINT(%g,%%20%g)&startDate=%s&endDate=%s&type=asc2')
+
+
+  dl_parse = function(var){
+    durl = sprintf(url_pattern, var, lon, lat, format(start, '%Y-%m-%dT%H'), format(stop, '%Y-%m-%dT%H'))
+    r = RETRY('GET', durl)
+    d = read.table(text=content(r, 'text'), skip=12, header=TRUE, fill=TRUE)
+    names(d) = c('datetime', var)
+    d$datetime = as.POSIXct(strptime(paste0(d$datetime, 'T', d$hour), '%Y-%m-%dT%H', tz='UTC'))
+    d$hour = NULL
+    return(d)
+  }
+
+  d_list = lapply(pf_vars, dl_parse)
+
+  pf_data = Reduce(function(...){merge(..., by='datetime')}, d_list)
+  return(pf_data)
+}
+```
+
+
+
+## Get GLDAS 2.0 surface pressure rods (1990-2000)
+
+```{r}
+
+start_date <- as.POSIXct("1989-12-31", tz =  "UTC")
+stop_date <-  as.POSIXct("2000-01-01", tz = "UTC")
+
+
+
+gldas_2_0_press_00_22 <-
+  centroids %>%
+      mutate(gldas = map2(.x = lon, .y = lat, 
+                          ~gldas2_0_rods(.x, .y, start = start_date, stop = stop_date)))
+#write_rds(gldas_2_0_press_00_22, "output/gldas_2_0_press_00_22")
+
+gldas_2_0_press_00_22  #1990-2000
+
+```
+
+
+## Join GLDAS 1990-2000 (2.0) with 2000-2022 (2.1)
+```{r}
+
+gldas_pressure <-
+gldas_2_0_press_00_22 %>% 
+  bind_rows(gldas_2_1_press_00_22) %>% 
+  unnest(nldas) %>% 
+  group_by(site_name) %>% 
+  arrange(site_name, datetime) %>% 
+  rename(pressure = Psurf_f_inst)
+
+
+gldas_pressure %>% 
+  summary()
+```
+
+

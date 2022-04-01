@@ -1,0 +1,116 @@
+---
+title: "get_surface_pressure_earth_engine"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+```
+
+Script used in Google Earth Engine code editor:
+
+
+// Make a list of Features.
+var sites = [ee.Feature(ee.Geometry.Point(-84.80115, 32.39959), {name: 'Fort Benning'}),
+    ee.Feature(ee.Geometry.Point(-87.62461, 36.6222), {name: 'Fort Campbell'}),
+    ee.Feature(ee.Geometry.Point(-87.30628, 30.35261), {name: 'NAS Pensacola'}),
+    ee.Feature(ee.Geometry.Point(-76.30775, 36.84598), {name: 'NMC Portsmouth'}),
+    ee.Feature(ee.Geometry.Point(-77.4572, 38.55207), {name: 'MCB Quantico'}),
+    ee.Feature(ee.Geometry.Point(-117.19769, 32.74017), {name: 'MCRD San Diego'}),
+    ee.Feature(ee.Geometry.Point(-96.82482, 39.20675), {name: 'Fort Riley'}),
+    ee.Feature(ee.Geometry.Point(-116.6333, 35.37432), {name: 'Fort Irwin'}),
+    ee.Feature(ee.Geometry.Point(-82.23727, 33.35667), {name: 'Fort Gordon'}),
+    ee.Feature(ee.Geometry.Point(-116.13869, 34.45805), {name: 'Twentynine Palms'}),
+    ee.Feature(ee.Geometry.Point(-98.52759, 34.69519), {name: 'Fort Sill'}),
+    ee.Feature(ee.Geometry.Point(-77.29965, 34.63708), {name: 'MCB Camp Lejeune'}),
+    ee.Feature(ee.Geometry.Point(-80.69618, 32.33758), {name: 'MCRD Parris Island'}),
+    ee.Feature(ee.Geometry.Point(-117.42357, 33.36176), {name: 'MCB Camp Pendleton'}),
+    ee.Feature(ee.Geometry.Point(-79.14397, 35.13624), {name: 'Fort Bragg'}),
+    ee.Feature(ee.Geometry.Point(-86.52837, 30.57594), {name: 'Eglin AFB'}),
+    ee.Feature(ee.Geometry.Point(-98.44071, 29.45953), {name: 'Joint Base San Antonio'}),
+    ee.Feature(ee.Geometry.Point(-93.12082, 31.15788), {name: 'Fort Polk'}),
+    ee.Feature(ee.Geometry.Point(-80.82734, 34.03994), {name: 'Fort Jackson'})
+];
+
+// Create a FeatureCollection from the list and print it.
+var FCsites = ee.FeatureCollection(sites);
+print(FCsites);
+
+//NLDAS
+var pressure = ee.ImageCollection(NLDAS)
+.filterDate('1989-12-31', '2022-01-01')
+.select('pressure');
+
+
+
+
+/////////////////////////////////////////////////////////
+
+//Create a collection of triplets, {imageID, site_name, first}:
+
+var triplets = pressure.map(function(image) {
+  return image.select('pressure').reduceRegions({
+    collection: FCsites.select(['name']), 
+    reducer: ee.Reducer.first(), 
+    tileScale: 16
+  }).filter(ee.Filter.neq('first', null))
+    .map(function(f) { 
+      return f.set('imageId', image.id());
+    });
+}).flatten();
+
+print(triplets.first());  //properties: name, imageId, first
+
+//////////////////////////////////////////////////////////////////////////
+
+// Format a table of triplets into a 2D table of rowId x colId.
+var format = function(table, rowId, colId) {
+  // Get a FeatureCollection with unique row IDs.
+  var rows = table.distinct(rowId);
+  // Join the table to the unique IDs to get a collection in which
+  // each feature stores a list of all features having a common row ID. 
+  var joined = ee.Join.saveAll('matches').apply({
+    primary: rows, 
+    secondary: table, 
+    condition: ee.Filter.equals({
+      leftField: rowId, 
+      rightField: rowId
+    })
+  });
+
+  return joined.map(function(row) {
+      // Get the list of all features with a unique row ID.
+      var values = ee.List(row.get('matches'))
+        // Map a function over the list of rows to return a list of
+        // column ID and value.
+        .map(function(feature) {
+          feature = ee.Feature(feature);
+          return [feature.get(colId), feature.get('first')];
+        });
+      // Return the row with its ID property and properties for
+      // all matching columns IDs storing the output of the reducer.
+      // The Dictionary constructor is using a list of key, value pairs.
+      return row.select([rowId]).set(ee.Dictionary(values.flatten()));
+    });
+};
+
+
+var table1 = format(triplets, 'name', 'imageId');
+var desc2 = 'pressure';
+
+Export.table.toDrive({
+  collection: table1, 
+  description: desc2, 
+  fileNamePrefix: desc2,
+  fileFormat: 'CSV'
+});
+
+
+

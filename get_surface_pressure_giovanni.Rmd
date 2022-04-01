@@ -1,0 +1,45 @@
+---
+title: "get_surface_pressure_giovanni"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+
+```
+
+
+Full hourly time series is too long - Giovanni does not complete.
+
+
+
+https://giovanni.gsfc.nasa.gov/giovanni/#service=ArAvTs&starttime=1989-12-31T00:00:00Z&endtime=2022-01-01T23:59:59Z&bbox=-84.8012,32.3996,-84.8012,32.3996&data=NLDAS_FORA0125_H_2_0_PSurf&dataKeyword=pressure
+
+
+Download CSV: https://giovanni.gsfc.nasa.gov/giovanni/daac-bin/serializer.pl?SESSION=7318A386-B033-11EC-A90D-C8F94C9009CC&RESULTSET=3F87A0B4-B130-11EC-B9C6-A5BB4C9009CC&RESULT=3F87B504-B130-11EC-B9C6-A5BB4C9009CC&FILE=g4.areaAvgTimeSeries.NLDAS_FORA0125_H_2_0_PSurf.19900714-19900715.84W_32N_84W_32N.nc
+
+
+
+
+# Test
+```{r}
+# Specify URL where file is stored
+url <- "https://giovanni.gsfc.nasa.gov/giovanni/#service=ArAvTs&starttime=2000-07-01T00:00:00Z&endtime=2007-07-02T23:59:59Z&bbox=-84.8012,32.3996,-84.8012,32.3996&data=NLDAS_FORA0125_H_2_0_PSurf&dataKeyword=pressure"
+
+
+# Specify destination where file should be saved
+destfile <- "output/pressfc_test.csv"
+
+# Apply download.file function in R
+download.file(url, destfile)
+
+```
+
