@@ -1,0 +1,36 @@
+---
+title: "surf_press_from_gee"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(googledrive)
+library(httpuv)
+library(Rcpp)
+
+```
+
+Import NLDAS 2 surface pressure CSV files from Google Drive, reshape, compile batches, and join with other NLDAS bands.
+Values extracted through GEE script in `get_surface_pressure_earth_engine`.
+Reshape from wide (timestamp as columns) to long (timestamp as variable).
+
+Files are hourly by decade (task runtime from 3 - 10 hours each). A 32-year task timed out after 12 hours.
+
+
+## Import files from Google Drive
+```{r}
+drive_auth(e-mail = "slewando1@gmail.com")
+
+drive_find(n_max = 30)
+
+
+```

@@ -13,9 +13,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(lubridate)
 library(janitor)
-library(sf)
-library(remotes)
-library(nldastools) #remotes::install_github("lawinslow/nldasR", force = TRUE)
 library(httr)
 
 ```
@@ -236,6 +233,13 @@ gldas_2_0_press_00_22  #1990-2000
 ## Join GLDAS 1990-2000 (2.0) with 2000-2022 (2.1)
 ```{r}
 
+gldas_2_0_press_00_22 <-
+  read_rds("output/gldas_2_0_press_00_22")
+
+
+gldas_2_1_press_00_22 <-
+  read_rds("output/gldas_2_1_press_00_22")
+
 gldas_pressure <-
 gldas_2_0_press_00_22 %>% 
   bind_rows(gldas_2_1_press_00_22) %>% 
@@ -247,6 +251,8 @@ gldas_2_0_press_00_22 %>%
 
 gldas_pressure %>% 
   summary()
+
+#write_rds(gldas_pressure, "output/gldas_pressure")
 ```
 
 

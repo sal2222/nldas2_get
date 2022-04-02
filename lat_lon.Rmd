@@ -20,7 +20,7 @@ remotes::install_github("lawinslow/nldasR")
 ```
 
 Input: "data/centroid_coords.rds"
-Output: 
+Output: "output/centroids.Rmd"
 
 
 ## Coordinates of base shapefile centroids
