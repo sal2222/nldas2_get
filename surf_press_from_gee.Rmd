@@ -26,11 +26,95 @@ Reshape from wide (timestamp as columns) to long (timestamp as variable).
 Files are hourly by decade (task runtime from 3 - 10 hours each). A 32-year task timed out after 12 hours.
 
 
-## Import files from Google Drive
+## Download files from Google Drive
 ```{r}
-drive_auth(e-mail = "slewando1@gmail.com")
+# Access via Tidyverse `googledrive` package
+
+drive_auth() # complete authorization steps/permissions on browser
 
 drive_find(n_max = 30)
 
+drive_download("~/pressure_decade/pressure1990.csv", path = "data/pressure1990.csv")
+drive_download("~/pressure_decade/pressure2000.csv", path = "data/pressure2000.csv")
+drive_download("~/pressure_decade/pressure2010.csv", path = "data/pressure2010.csv")
 
 ```
+
+
+## Read and clean NLDAS 2 surface pressure files
+1st list (19 sites)
+```{r}
+
+pressure1990 <-
+  read_csv(file = "data/pressure1990.csv")
+
+pressure1990 # 19 rows, 87,651 columns
+pressure1990$name  # missing: Hood, Bliss, Leonard Wood, Knox, Stewart; missing from geometry point features list
+
+pressure1990_l <- #1,665,312 rows x 3 columns
+  pressure1990 %>% 
+    dplyr::select(name, `.geo`, `system:index`, everything()) %>% 
+    dplyr::select(-c(`.geo`, `system:index`)) %>% 
+    pivot_longer(-name, names_to = "timestamp", values_to = "pressure")
+
+
+pressure1990_l %>% 
+  tail()  # through A19991231_2300
+
+# 2000 - 2010
+pressure2000 <-
+  read_csv(file = "data/pressure2000.csv")
+
+pressure2000 # 19 rows, 87,651 columns
+pressure2000$name  # missing: Hood, Bliss, Leonard Wood, Knox, Stewart; missing from geometry point features list
+
+pressure2000_l <- #1,665,312 rows x 3 columns
+  pressure2000 %>% 
+    dplyr::select(name, `.geo`, `system:index`, everything()) %>% 
+    dplyr::select(-c(`.geo`, `system:index`)) %>% 
+    pivot_longer(-name, names_to = "timestamp", values_to = "pressure")
+
+# start: A20000101_0000
+# end:
+pressure2000_l %>% 
+  tail()  # through A20091231_2300
+
+#2010 - 2020
+
+
+pressure2010 <-
+  read_csv(file = "data/pressure2010.csv")
+
+pressure2010 # 19 rows, 87,651 columns
+pressure2010$name  # missing: Hood, Bliss, Leonard Wood, Knox, Stewart; missing from geometry point features list
+
+pressure2010_l <- #1,665,312 rows x 3 columns
+  pressure2010 %>% 
+    dplyr::select(name, `.geo`, `system:index`, everything()) %>% 
+    dplyr::select(-c(`.geo`, `system:index`)) %>% 
+    pivot_longer(-name, names_to = "timestamp", values_to = "pressure")
+
+# start: A20100101_0000
+# end:
+pressure2010_l %>% 
+  tail()  # through A20191231_2300
+
+
+pressure_long_a <-
+  pressure1990_l %>% 
+    bind_rows(pressure2000_l) %>% 
+    bind_rows(pressure2010_l)
+
+
+pressure_long_a
+# write_rds(pressure_long_a, "data/pressure_long_a.rds")  
+# 4,996,392 x 3, NLDAS2 surface pressure for 19 sites
+
+```
+
+
+
+
+
+
+
