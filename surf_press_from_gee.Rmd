@@ -16,6 +16,7 @@ library(janitor)
 library(googledrive)
 library(httpuv)
 library(Rcpp)
+library(stringr)
 
 ```
 
@@ -113,8 +114,58 @@ pressure_long_a
 ```
 
 
+## Read and clean NLDAS 2 surface pressure files
+2nd list (5 sites)
+Executed in 1 run, 1990 - 2020 in 4 hours with bounding box applied to NLDAS image collection stack
+
+```{r}
+
+drive_download("~/pressure_5sites/pressureb_all.csv", path = "data/pressureb_all.csv")
 
 
+pressureb <-
+  read_csv(file = "data/pressureb_all.csv")
+
+pressureb # 19 rows, 262,995 columns
+pressureb$name   # Hood, Bliss, Leonard Wood, Knox, Stewart
+
+# Wide to Long
+pressureb_l <- #1,314,960 rows x 3 columns
+  pressureb %>% 
+    dplyr::select(name, `.geo`, `system:index`, everything()) %>% 
+    dplyr::select(-c(`.geo`, `system:index`)) %>% 
+    pivot_longer(-name, names_to = "timestamp", values_to = "pressure")
 
 
+# write_rds(pressureb_l, "data/pressure_long_b.rds") 
+
+```
+
+
+## Bind long dataframes (19 sites and 5 sites) of surface pressure data
+
+```{r}
+pressurea_l <-
+  read_rds("data/pressure_long_a.rds")
+
+
+pressurea_l %>% 
+  slice(1:3) %>% 
+    mutate(timestamp = str_sub(timestamp, 2, -1),
+           timestamp = lubridate::as_datetime(timestamp,
+                                              format = "%Y%m%d_%H%M", 
+                                              tz = "UTC")) 
+    
+
+
+nldas_pressure <-
+  pressurea_l %>% 
+  bind_rows(pressureb_l) %>% 
+  mutate(timestamp = str_sub(timestamp, 2, -1),
+           timestamp = lubridate::as_datetime(timestamp,
+                                              format = "%Y%m%d_%H%M", 
+                                              tz = "UTC"))
+
+# write_rds(nldas_pressure, "output/nldas_pressure.rds")  # 3 columns x 6,311,352 rows
+```
 
