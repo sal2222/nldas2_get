@@ -15,7 +15,10 @@ library(lubridate)
 library(janitor)
 library(lutz)
 library(sf)
-
+library(weathermetrics)
+library(humidity)
+library(inspectdf)
+#devtools::install_github("mdljts/wbgt")
 ```
 
 Input: "output/nldas8.rds", "output/nldas_pressure.rds", "data/centroid_coords.rds" (for time zones)
@@ -67,6 +70,9 @@ time_zones <-
   as_tibble() 
 
 # write_rds(time_zones, "output/time_zones.rds")
+time_zones <-
+  read_rds("output/time_zones.rds")
+
 
 time_zones %>% as.data.frame() 
 
@@ -80,14 +86,154 @@ nldas_hourly_rods <-
         .$time_zone == "America/New_York" ~ as.character(with_tz(.$utc_dttm, tz = "America/New_York")),
         .$time_zone == "America/Chicago" ~ as.character(with_tz(.$utc_dttm, tz = "America/Chicago")), 
         .$time_zone == "America/Denver" ~ as.character(with_tz(.$utc_dttm, tz = "America/Denver")), 
-        .$time_zone == "America/Los_Angeles" ~ as.character(with_tz(.$utc_dttm, tz = "America/Los_Angeles")))) %>% 
-    dplyr::select(-time_zone, site_name, utc_dttm, local_dttm, everything())
+        .$time_zone == "America/Los_Angeles" ~ as.character(with_tz(.$utc_dttm, tz = "America/Los_Angeles")))) 
 
-# write_rds(nldas_hourly_rods, "data/nldas_hourly_rods.rds")  
+
+nldas_hourly_rods <-
+  nldas_hourly_rods %>% 
+    dplyr::select(-time_zone) %>% 
+    dplyr::select(site_name, utc_dttm, local_dttm, everything())
+
+# write_rds(nldas_hourly_rods, "data/nldas_hourly_rods.rds")   # 6,732,888 rows x 12 columns
 
 nldas_hourly_rods <-
   read_rds("data/nldas_hourly_rods.rds")
   
 
 ```
+
+## Check mean temperatures
+
+```{r}
+
+nldas_hourly_rods %>% 
+  group_by(site_name) %>% 
+  summarise(mat = 1.8 * (mean(TMP2m, na.rm = TRUE)-273.15) + 32) %>% 
+  as.data.frame()
+
+```
+
+## Meteorology conversions and heat index
+From original NLDAS variables, add windspeed, temp in F and C, relative humidity, dew point (C), heat index (F)
+
+```{r}
+
+nldas_met_conversions <-
+  nldas_hourly_rods %>%
+    dplyr::filter(lubridate::date(utc_dttm) > "1989-12-31" & lubridate::date(utc_dttm) < "2020-01-01") %>% 
+    dplyr::select(-c(APCPsfc, PEVAPsfc)) %>% 
+    mutate(windspeed = sqrt(UGRD10m^2 + VGRD10m^2),
+             tmp_f = weathermetrics::convert_temperature(TMP2m, old_metric = "kelvin", new_metric = "fahrenheit"),
+             tmp_c = weathermetrics::convert_temperature(TMP2m, old_metric = "kelvin", new_metric = "celsius"),
+             rh = humidity::SH2RH(SPFH2m, TMP2m, p = pressure, isK = TRUE),
+             rh = case_when(
+               rh > 100 ~ 100,
+               rh <= 100 ~ rh
+             ), # Restrict RH to 100% maximum
+             dp_c = humidity.to.dewpoint(rh = rh, t = tmp_c, temperature.metric = "celsius"),
+             heat_index = weathermetrics::heat.index(t = tmp_f,
+                             rh = rh,
+                             temperature.metric = "fahrenheit",
+                             output.metric = "fahrenheit",
+                             round = 2)) %>%
+    dplyr::select(-c(UGRD10m, VGRD10m))
+  
+nldas_met_conversions 
+
+nldas_met_conversions %>% summary()
+
+nldas_met_conversions %>% 
+  inspectdf::inspect_na() # no missing values
+
+
+```
+
+## Wet Bulb Globe Temperature (WBGT) Estimate
+
+- apply a wrapper of the C code developed by Liljegren et al to estimate WBGT from datasets of standard meterological measurements; product  produced by UChicago Argonne, LLC under contract with the Department of Energy
+
+- need lat and lon columns for the WBGT function
+
+
+### Apply lon/lat, calculate local - utc time difference, create dataframe with columns needed for wbgt::wbgt_df (mdljts wrapper) 
+```{r}
+
+lon_lat <-
+  time_zones %>%
+    mutate(longitude = unlist(map(centroid, 1)),
+           latitude = unlist(map(centroid, 2))) %>% 
+    dplyr::select(-centroid)
+    
+
+# Create datframe for `wbgt_df` wrapper function
+
+  # LST - GMT difference (utc_offset)
+to_wbgt_prep <-  
+  nldas_met_conversions %>% 
+      left_join(lon_lat, by = "site_name") %>% 
+      mutate(local_dttm = lubridate::as_datetime(local_dttm),
+             utc_offset = lubridate::as.period(local_dttm - utc_dttm, unit = hours)) %>% # hour difference in period format
+      mutate(utc_offset = lubridate::time_length(utc_offset, unit = "hours")) # hour difference in numeric format
+
+  # function input dataframe           
+to_wbgt <-  
+  to_wbgt_prep %>%  
+     mutate(year = lubridate::year(local_dttm), # 4-digit, e.g. 2007	
+            month = lubridate::month(local_dttm), # month (1-12)
+            day = lubridate::day(local_dttm), # day of month
+            hour = lubridate::hour(local_dttm), # hour in local standard time (LST)
+            minute = lubridate::minute(local_dttm), # minutes past the hour	
+            gmt = utc_offset, # LST-GMT difference, hours (negative in USA)	
+            avg = 60, #  averaging time of meteorological inputs, minutes
+            lat = latitude, # north latitude, decimal		
+            lon = longitude, # east longitude, decimal (negative in USA)
+            solar = DSWRFsfc,  # solar irradiance, W/m2
+            pres = pressure / 100, # barometric pressure, mb		
+            Tair = tmp_c, # air (dry bulb) temperature, degC	
+            relhum = rh, # relative humidity, %	
+            speed = windspeed, # wind speed, m/s
+            zspeed = 10, # height of wind speed measurement, m	
+            dT = 0, #  vertical temperature difference (upper minus lower), degC
+            urban = 1) %>% # urban best suited for semi-woodland (Liljegren)
+    dplyr::select(year:urban)
+
+
+
+# Execute WBGT wrapper on entire dataframe 
+wbgt_mdljts <-     
+ wbgt::wbgt_df(to_wbgt) 
+
+# write_rds(wbgt_mdljts, "data/wbgt_mdljts_output.rds")
+
+wbgt_mdljts <- 
+  read_rds("data/wbgt_mdljts_output.rds")
+
+# Bind WBGT column to NLDAS dataframe and add Fahrenheit conversion
+
+  # select WBGT column (deg C)
+wbgt_mdljts <- 
+  wbgt_mdljts %>%
+    dplyr::select(wbgt)
+  
+  # bind wbgt, corresponding 6,111,232 row dataframes
+
+nldas_hourly_index_full <-
+  nldas_met_conversions %>% 
+  bind_cols(wbgt_mdljts) %>% 
+  mutate(wbgt_f = weathermetrics::convert_temperature(wbgt, old_metric = "celsius", new_metric = "fahrenheit")) %>% 
+  rename(wbgt_c = wbgt,
+         hi_f = heat_index)
+
+# write_rds(nldas_hourly_index_full, "data/nldas_hourly_index_full.rds")
+    
+
+nldas_hourly_index_rod <-
+  nldas_hourly_index_full %>% 
+    dplyr::select(-c(DLWRFsfc, DSWRFsfc, SPFH2m, TMP2m, pressure, windspeed, rh, dp_c)) %>%
+    mutate(hi_c = weathermetrics::convert_temperature(hi_f, old_metric = "fahrenheit", new_metric = "celsius")) 
+
+# write_rds(nldas_hourly_index_rod, "data/nldas_hourly_index_rod.rds")  
+```
+
+
 

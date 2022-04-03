@@ -44,7 +44,7 @@ Output: "output/nldas_pressure.rds"
 
 ## 4. `nldas_df`
 Input: "output/nldas8.rds", "output/nldas_pressure.rds", "data/centroid_coords.rds" (for time zones)
-Output: "data/nldas_hourly_rods.rds", "index_hourly_rod.rds", "output/time_zones.rds"
+Output: "data/nldas_hourly_rods.rds", "output/time_zones.rds"; "data/wbgt_mdljts_output.rds", "data/nldas_hourly_index_full.rds", "data/nldas_hourly_index_rod.rds" 
 
 Compile hourly NLDAS 2 df and hourly index dataframes
 
