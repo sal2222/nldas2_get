@@ -1,0 +1,93 @@
+---
+title: "nldas_df"
+output: 
+  html_document:
+   keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(lutz)
+library(sf)
+
+```
+
+Input: "output/nldas8.rds", "output/nldas_pressure.rds", "data/centroid_coords.rds" (for time zones)
+Output: "data/nldas_hourly_rods.rds", "index_hourly_rod.rds", "output/time_zones.rds"
+
+
+Prepare hourly NLDAS2 df and hourly index dataframes
+
+```{r}
+nldas_8 <-
+  read_rds("output/nldas_8")
+
+nldas_pressure <-
+  read_rds("output/pressure_8.rds")
+
+```
+
+
+## Join surface pressure to NLDAS 2 bands
+```{r}
+
+nldas_hourly_rods <- #6,732,888 rows x 11 columns
+  nldas_8 %>% 
+    dplyr::select(-c(lon, lat)) %>% 
+    unnest(nldas) %>% 
+    left_join(nldas_pressure, by = c("site_name" = "name", "datetime" = "timestamp"))
+  
+
+```
+
+## Local time from UTC
+
+Timezones for local time conversion
+```{r}
+centroids <- read_rds(file = "data/centroid_coords.rds")
+
+time_zones <-
+  centroids %>% 
+    dplyr::filter(!site_name %in% c("Fort Huachuca","Fort Carson","Fort Lewis", "Lackland AFB",
+                                    "West Point Mil Reservation","Fort Drum")) %>%
+    mutate(site_name = recode(site_name, `Fort Benning GA` = "Fort Benning",
+                              `Naval Medical Center Portsmouth` = "NMC Portsmouth",
+                              `NTC and Fort Irwin` = "Fort Irwin",
+                              `Twentynine Palms Main Base` = "Twentynine Palms",
+                              `MCRD Beaufort Parris Island` = "MCRD Parris Island",
+                              `Fort Sam Houston` = "Joint Base San Antonio")) %>% 
+  dplyr::select(site_name, centroid) %>% 
+  mutate(time_zone = lutz::tz_lookup(centroid, crs = 4326, method = "accurate")) %>% 
+  as_tibble() 
+
+# write_rds(time_zones, "output/time_zones.rds")
+
+time_zones %>% as.data.frame() 
+
+# add local dttm
+
+nldas_hourly_rods <-
+  nldas_hourly_rods %>% 
+    rename(utc_dttm = datetime) %>% 
+    left_join(time_zones %>% dplyr::select(-centroid), by = "site_name") %>%
+    dplyr::mutate(local_dttm = dplyr::case_when(
+        .$time_zone == "America/New_York" ~ as.character(with_tz(.$utc_dttm, tz = "America/New_York")),
+        .$time_zone == "America/Chicago" ~ as.character(with_tz(.$utc_dttm, tz = "America/Chicago")), 
+        .$time_zone == "America/Denver" ~ as.character(with_tz(.$utc_dttm, tz = "America/Denver")), 
+        .$time_zone == "America/Los_Angeles" ~ as.character(with_tz(.$utc_dttm, tz = "America/Los_Angeles")))) %>% 
+    dplyr::select(-time_zone, site_name, utc_dttm, local_dttm, everything())
+
+# write_rds(nldas_hourly_rods, "data/nldas_hourly_rods.rds")  
+
+nldas_hourly_rods <-
+  read_rds("data/nldas_hourly_rods.rds")
+  
+
+```
+

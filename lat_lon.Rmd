@@ -48,7 +48,7 @@ centroids <- cbind(base_geometries, coordinates) %>%
                             `MCRD Beaufort Parris Island` = "MCRD Parris Island",
                             `Fort Sam Houston` = "Joint Base San Antonio"))
 
-# write_rds(centroids, "output/centroids.Rmd")
+# write_rds(centroids, "output/centroids.rds")
     
 ```    
 

@@ -38,8 +38,21 @@ Output: Google Drive "pressure_decade/pressure2000.csv", "pressure_decade/pressu
 
 ## 6. `surf_press_from_gee`
 Input: Google Drive "pressure_decade/pressure2000.csv", "pressure_decade/pressure2010.csv", "pressure_decade/pressure2020.csv"
-Output:
+Output: "output/nldas_pressure.rds"
 
-- transform and compile NLDAS 2 surgace pressures from GEE
+- transform and compile NLDAS 2 surface pressure tables extracted using Earth Engine
+
+## 4. `nldas_df`
+Input: "output/nldas8.rds", "output/nldas_pressure.rds", "data/centroid_coords.rds" (for time zones)
+Output: "data/nldas_hourly_rods.rds", "index_hourly_rod.rds", "output/time_zones.rds"
+
+Compile hourly NLDAS 2 df and hourly index dataframes
+
+- Join surface pressure to NLDAS 2 bands
+- Identify site timezones and add local time column
+- Meteorology conversions (K to deg F and deg C, relative humidity, dew point)
+- Heat index
+- WBGT
+
 
 
