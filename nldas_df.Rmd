@@ -121,7 +121,7 @@ From original NLDAS variables, add windspeed, temp in F and C, relative humidity
 
 ```{r}
 
-#https://rdrr.io/cran/humidity/src/R/humidity.R#sym-SH2RH
+# https://rdrr.io/cran/humidity/src/R/humidity.R#sym-SH2RH
 
 # SH2RH <- function(q, t, p = 101325, isK = TRUE) {
 #   # check parameters
@@ -163,7 +163,6 @@ From original NLDAS variables, add windspeed, temp in F and C, relative humidity
 # }
 #Rw: Specific gas constant of water vapor R_w = \frac{1000R}{M_w} = 461.52J/(kgK), where R = 8.3144621J/(molK) is the #molar gas constant and M_w = 18.01528g/mol is the molecular weight of water vapor.
 #L: Latent heat of water vapor L = 2.5 \times 10^6J/kg
-
 
 
 nldas_met_conversions <-
@@ -364,7 +363,6 @@ nldas_hourly_index_rod <-
 
 
 ```{r}
-
 nldas_8 %>% 
   filter(site_name %in% "MCB Camp Pendleton") %>% 
   unnest(nldas) %>% 
@@ -438,7 +436,21 @@ nldas_hourly_index_full %>%
          lubridate::year(local_dttm) %in% "2010",
          lubridate::month(local_dttm) %in% 8) %>% 
   dplyr::select(site_name, local_dttm, SPFH2m, tmp_f, pressure, rh)
+
+
+# Inspect indices for hours with temp_f > 80 
+
+nldas_hourly_index_full %>% 
+  dplyr::filter(lubridate::year(local_dttm) %in% 1998:2019,
+                tmp_f > 80) %>%
+    group_by(site_name) %>% 
+    summarise_at(c("tmp_f", "hi_f", "wbgt_f", "rh"), mean) %>%
+    arrange(desc(tmp_f)) %>% 
+    as.data.frame()
+
+
 ```
+
 
 
 

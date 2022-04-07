@@ -7,25 +7,15 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
-library(tidyverse)
-library(lubridate)
-library(janitor)
-library(sf)
-library(remotes)
-remotes::install_github("lawinslow/nldasR")
-library(markdown)
-
-```
 
 Input: "data/centroid_coords.rds"
 Output: "output/centroids.Rmd"
 
 
 ## Coordinates of base shapefile centroids
-```{r}
+
+```r
 # Load geometry and centroids for 30 installations
 
 base_geometries <- read_rds(file = "data/centroid_coords.rds")
@@ -50,8 +40,7 @@ centroids <- cbind(base_geometries, coordinates) %>%
                             `Fort Sam Houston` = "Joint Base San Antonio"))
 
 # write_rds(centroids, "output/centroids.rds")
-    
-```    
+```
 
 
 Tested Hydroshare data rods: not available for hourly pressure    
