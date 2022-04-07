@@ -32,7 +32,7 @@ nldas_8 <-
   read_rds("output/nldas_8")
 
 nldas_pressure <-
-  read_rds("output/pressure_8.rds")
+  read_rds("output/nldas_pressure.rds")
 
 ```
 
@@ -54,6 +54,8 @@ nldas_hourly_rods <- #6,732,888 rows x 11 columns
 Timezones for local time conversion
 ```{r}
 centroids <- read_rds(file = "data/centroid_coords.rds")
+
+centroids %>% as.data.frame()
 
 time_zones <-
   centroids %>% 
@@ -109,6 +111,7 @@ nldas_hourly_rods <-
 nldas_hourly_rods %>% 
   group_by(site_name) %>% 
   summarise(mat = 1.8 * (mean(TMP2m, na.rm = TRUE)-273.15) + 32) %>% 
+  arrange(desc(mat)) %>% 
   as.data.frame()
 
 ```
@@ -117,6 +120,51 @@ nldas_hourly_rods %>%
 From original NLDAS variables, add windspeed, temp in F and C, relative humidity, dew point (C), heat index (F)
 
 ```{r}
+
+#https://rdrr.io/cran/humidity/src/R/humidity.R#sym-SH2RH
+
+# SH2RH <- function(q, t, p = 101325, isK = TRUE) {
+#   # check parameters
+#   stopifnot(is.numeric(q))
+#   stopifnot(is.numeric(t))
+#   stopifnot(is.numeric(p))
+#   stopifnot(is.logical(isK))
+# 
+#   if (isK == FALSE) {
+#     t <- C2K(t)
+#   }
+#   e <- q * p / (0.622 + 0.378 * q) # in Pa
+#   Es <- SVP.ClaCla(t) # in hPa
+#   psi <- e / Es
+#   return(psi)
+# }
+# 
+#' @title calculate saturation vapor pressure using the Clausius-Clapeyron equation
+#' @description calculate saturation vapor pressure \eqn{E_s} at temperature \eqn{t}, using the Clausius-Clapeyron equation.
+#' @param t temperature in Kelvin (K)
+#' @return numeric saturation vapor pressure in hectopascal (hPa) or millibar (mb)
+#' @references Shaman, J., & Kohn, M. (2009). \emph{Absolute humidity modulates influenza survival, transmission, and seasonality}. Proceedings of the National Academy of Sciences, 106(9), 3243-3248.
+#'
+#' Wallace, J. M., & Hobbs, P. V. (2006). \emph{Atmospheric science: an introductory survey} (Vol. 92). Academic press.
+#' @seealso \code{\link{SVP.Murray}}, \code{\link{SVP}}.
+#' @author Jun Cai (\email{cai-j12@@mails.tsinghua.edu.cn}), PhD candidate from
+#' Department of Earth System Science, Tsinghua University
+#' @export
+#' @examples
+#' T0 # absolute zero in Kelvin (K)
+#' SVP.ClaCla(T0)
+#
+# SVP.ClaCla <- function(t) {
+#   # check parameter
+#   stopifnot(is.numeric(t))
+# 
+#   Es <- Es.T0 * exp((L / Rw) * (1 / T0 - 1 / t))
+#   return(Es)
+# }
+#Rw: Specific gas constant of water vapor R_w = \frac{1000R}{M_w} = 461.52J/(kgK), where R = 8.3144621J/(molK) is the #molar gas constant and M_w = 18.01528g/mol is the molecular weight of water vapor.
+#L: Latent heat of water vapor L = 2.5 \times 10^6J/kg
+
+
 
 nldas_met_conversions <-
   nldas_hourly_rods %>%
@@ -145,6 +193,82 @@ nldas_met_conversions %>% summary()
 nldas_met_conversions %>% 
   inspectdf::inspect_na() # no missing values
 
+
+
+## Alternate RH calculation
+
+https://earthscience.stackexchange.com/questions/2360/how-do-i-convert-specific-humidity-to-relative-humidity
+
+##' Convert specific humidity to relative humidity
+##'
+##' converting specific humidity into relative humidity
+##' NCEP surface flux data does not have RH
+##' from Bolton 1980 The computation of Equivalent Potential Temperature 
+##' \url{http://www.eol.ucar.edu/projects/ceop/dm/documents/refdata_report/eqns.html}
+##' @title qair2rh
+##' @param qair specific humidity, dimensionless (e.g. kg/kg) ratio of water mass / total air mass
+##' @param temp degrees C
+##' @param press pressure in mb
+##' @return rh relative humidity, ratio of actual water mixing ratio to saturation mixing ratio
+##' @export
+##' @author David LeBauer
+
+
+qair2rh <- function(qair, temp_C, pressure_mbar){
+    es <-  6.112 * exp((17.67 * temp_C)/(temp_C + 243.5))
+    e <- qair * pressure_mbar / (0.378 * qair + 0.622)
+    rh <- e / es
+    rh[rh > 1] <- 1
+    rh[rh < 0] <- 0
+    return(rh)
+}
+
+
+
+nldas_met_conversions_2 <-
+  nldas_hourly_rods %>%
+    dplyr::filter(lubridate::date(utc_dttm) > "1989-12-31" & lubridate::date(utc_dttm) < "2020-01-01") %>% 
+    dplyr::select(-c(APCPsfc, PEVAPsfc)) %>% 
+    mutate(windspeed = sqrt(UGRD10m^2 + VGRD10m^2),
+             tmp_f = weathermetrics::convert_temperature(TMP2m, old_metric = "kelvin", new_metric = "fahrenheit"),
+             tmp_c = weathermetrics::convert_temperature(TMP2m, old_metric = "kelvin", new_metric = "celsius"),
+             rh = qair2rh(SPFH2m, tmp_c, pressure/100), 
+             dp_c = humidity.to.dewpoint(rh = rh, t = tmp_c, temperature.metric = "celsius"),
+             heat_index = weathermetrics::heat.index(t = tmp_f,
+                             rh = rh * 100,
+                             temperature.metric = "fahrenheit",
+                             output.metric = "fahrenheit",
+                             round = 3)) %>%
+    dplyr::select(-c(UGRD10m, VGRD10m))
+  
+
+nldas_met_conversions_2 %>% summary()
+
+nldas_met_conversions_2 %>% 
+ dplyr::filter(lubridate::year(local_dttm) %in% 1998:2019) %>% 
+  group_by(site_name) %>% 
+  summarise(mean_rh = mean(rh)) %>% 
+  arrange(mean_rh) %>% 
+  as.data.frame()
+
+nldas_met_conversions_2 %>% 
+ dplyr::filter(lubridate::year(local_dttm) %in% 1998:2019) %>% 
+  group_by(site_name) %>% 
+  summarise(mean_hi = mean(heat_index)) %>% 
+  arrange(mean_hi) %>% 
+  as.data.frame()
+#write_rds(nldas_met_conversions_2, "data/nldas_met_conversions_2.rds")
+
+
+nldas_met_conversions_2 <-
+  read_rds("data/nldas_met_conversions_2.rds")
+
+nldas_met_conversions_2 %>% 
+  filter(site_name %in% "MCB Camp Pendleton",
+         lubridate::year(local_dttm) %in% "2010",
+         lubridate::month(local_dttm) %in% 8) %>% 
+  dplyr::select(site_name, local_dttm, SPFH2m, tmp_f, pressure, rh)
+      
 
 ```
 
@@ -234,6 +358,88 @@ nldas_hourly_index_rod <-
 
 # write_rds(nldas_hourly_index_rod, "data/nldas_hourly_index_rod.rds")  
 ```
+
+
+## Inspect
+
+
+```{r}
+
+nldas_8 %>% 
+  filter(site_name %in% "MCB Camp Pendleton") %>% 
+  unnest(nldas) %>% 
+    dplyr::filter(lubridate::year(datetime) %in% 1998:2019) %>%
+    group_by(lubridate::year(datetime)) %>% 
+    summarise(mean = mean(TMP2m))
+
+nldas_8 %>% 
+  filter(site_name %in% "MCB Camp Pendleton") %>% 
+  unnest(nldas) %>%
+  dplyr::filter(lubridate::year(datetime) %in% 1998:2019,
+                lubridate::month(datetime) %in% 8) %>%
+  group_by(date = lubridate::date(datetime)) %>%
+      dplyr::summarise_at(
+            .vars = vars(TMP2m),
+            .funs = c(mean = "mean", max = "max")) %>%
+  group_by(year = lubridate::year(date)) %>% 
+  summarise(mean = mean(mean),
+            max = mean(max)) %>% 
+  mutate(mean = weathermetrics::convert_temperature(mean, old_metric = "kelvin", new_metric = "fahrenheit"),
+         max = weathermetrics::convert_temperature(max, old_metric = "kelvin", new_metric = "fahrenheit")) %>% 
+  as.data.frame()
+
+
+# Pressure
+
+nldas_pressure %>% 
+  group_by(name) %>% 
+  summarise(mean_pressure = mean(pressure)) %>% 
+  arrange(mean_pressure) %>% 
+  as.data.frame()
+
+# Other bands
+
+# specific humidity
+nldas_8 %>% 
+  unnest(nldas) %>% 
+    dplyr::filter(lubridate::year(datetime) %in% 1998:2019) %>% 
+  group_by(site_name) %>% 
+  summarise(mean_spfh = mean(SPFH2m)) %>% 
+  arrange(mean_spfh) %>% 
+  as.data.frame()
+
+# shortwave (solar) radiation
+nldas_8 %>% 
+  unnest(nldas) %>% 
+    dplyr::filter(lubridate::year(datetime) %in% 1998:2019) %>% 
+  group_by(site_name) %>% 
+  summarise(mean_shortwave = mean(DSWRFsfc)) %>% 
+  arrange(mean_shortwave) %>% 
+  as.data.frame()
+
+
+nldas_hourly_index_full <-
+  read_rds("data/nldas_hourly_index_full.rds") 
+
+# relative humidity
+
+nldas_hourly_index_full %>% summary()
+
+nldas_hourly_index_full %>%
+  dplyr::filter(lubridate::year(local_dttm) %in% 1998:2019) %>% 
+   group_by(site_name) %>% 
+  summarise(mean_rh = mean(rh)) %>% 
+  arrange(mean_rh) %>% 
+  as.data.frame()
+
+
+nldas_hourly_index_full %>% 
+  filter(site_name %in% "MCB Camp Pendleton",
+         lubridate::year(local_dttm) %in% "2010",
+         lubridate::month(local_dttm) %in% 8) %>% 
+  dplyr::select(site_name, local_dttm, SPFH2m, tmp_f, pressure, rh)
+```
+
 
 
 
